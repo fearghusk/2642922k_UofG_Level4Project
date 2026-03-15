@@ -124,6 +124,7 @@ Typical workflow:
 
 to set up backend run both cells in colab. You may need to create an ngrok authentication account.
 **Google Colab link:** https://colab.research.google.com/drive/1Hlmr48cJnVLmjBFvmjGAGyLveo8Q8ZNH?usp=sharing
+all backend files in git repo's backend directory such as MIDIanalyser etc. must be uploaded to colab session.
 
 
 
