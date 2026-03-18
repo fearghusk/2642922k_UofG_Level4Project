@@ -68,13 +68,10 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <View style={styles.container} accessible={false}>
-      <Text style={styles.title} accessibilityRole="header">
-        Music Reader
-      </Text>
-      <Text style={styles.subtitle}>
-        Upload a PDF or photo of sheet music to generate a talking score.
-      </Text>
-
+      <View accessibilityRole="header" accessible={true} accessibilityLabel="Note Narrator">
+        <Text style={styles.title} accessible={false}>Note Narrator</Text>
+      </View>
+    
       <Pressable
         style={styles.button}
         onPress={pickFile}

@@ -55,14 +55,13 @@ function extractNotesOnly(barText) {
   const matches = [];
   let m;
   while ((m = notePattern.exec(barText)) !== null) {
-    // Normalise: "C#" -> "C sharp", trim octave number
     let note = m[1]
       .replace(/#/g, " sharp")
       .replace(/\bb\b/g, " flat")
       .replace(/\s+/g, " ")
-      .replace(/\s*\d$/, "") // strip octave digit
+      .replace(/\s*\d$/, "")
       .trim();
-    // Avoid duplicating consecutive identical notes
+
     if (matches[matches.length - 1] !== note) {
       matches.push(note);
     }
@@ -81,7 +80,6 @@ function flattenBeatTextForBar(barObj) {
   const beats = barObj?.beats || [];
   return beats
     .map((b) => {
-      // Strip "Beat 1:", "Beat 2.5:", etc. — just keep the note content
       const raw = safeString(b?.text).trim();
       return raw.replace(/^Beat\s+[\d.]+\s*:\s*/i, "").replace(/\.$/, "").trim();
     })
@@ -225,8 +223,6 @@ export default function ResultScreen({ route, navigation }) {
   const soundRef = useRef(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
-  const [uiStatus, setUiStatus] = useState(""); // SR live-region text (Android helps)
-
   useEffect(() => {
     console.log("✅ ResultScreen params:", { backendUrl, jobId, instrument, barsPerGroup, wholeAudioUrl });
   }, []);
@@ -264,7 +260,6 @@ export default function ResultScreen({ route, navigation }) {
   );
   const groups = useMemo(() => buildGroups(flatBars, barsPerGroup), [flatBars, barsPerGroup]);
 
-  // ---- Audio helpers ----
   const stopAudio = async () => {
     try {
       if (soundRef.current) {
@@ -274,20 +269,15 @@ export default function ResultScreen({ route, navigation }) {
       }
     } catch {}
     setIsPlayingAudio(false);
-    setUiStatus("Audio stopped.");
-    announce("Audio stopped.");
   };
 
-  const playAudioUrl = async (url, announceLabel = "audio") => {
+  const playAudioUrl = async (url) => {
     const u = safeString(url).trim();
     if (!u) return;
 
     await stopAudio();
 
     try {
-      setUiStatus(`Loading ${announceLabel}.`);
-      await announce(`Loading ${announceLabel}.`);
-
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -300,15 +290,10 @@ export default function ResultScreen({ route, navigation }) {
       soundRef.current = sound;
       setIsPlayingAudio(true);
 
-      setUiStatus(`Playing ${announceLabel}.`);
-      await announce(`Playing ${announceLabel}.`);
-
       sound.setOnPlaybackStatusUpdate((status) => {
         if (!status?.isLoaded) return;
         if (status.didJustFinish) {
           setIsPlayingAudio(false);
-          setUiStatus("Playback finished.");
-          announce("Playback finished.");
           sound.unloadAsync().catch(() => {});
           if (soundRef.current === sound) soundRef.current = null;
         }
@@ -316,13 +301,11 @@ export default function ResultScreen({ route, navigation }) {
     } catch (e) {
       setIsPlayingAudio(false);
       console.log("❌ playAudioUrl error:", e?.message || e);
-      setUiStatus("Audio playback failed.");
-      await announce("Audio playback failed.");
       speakText("Audio playback failed.", { language: "en-GB", rate: speechRate });
     }
   };
 
-  async function ensureGroupAudio({ groupKey, startBar, endBar, announceLabel }) {
+  async function ensureGroupAudio({ groupKey, startBar, endBar }) {
     if (groupAudioCache[groupKey]) return groupAudioCache[groupKey];
 
     if (!backendUrl || !jobId) {
@@ -330,8 +313,6 @@ export default function ResultScreen({ route, navigation }) {
     }
 
     setLoadingGroupAudio((p) => ({ ...p, [groupKey]: true }));
-    setUiStatus(`Generating audio for ${announceLabel}.`);
-    await announce(`Generating audio for ${announceLabel}.`);
 
     try {
       const res = await fetch(`${backendUrl}/render_group_audio`, {
@@ -353,8 +334,6 @@ export default function ResultScreen({ route, navigation }) {
       if (!url) throw new Error("Backend returned success:true but no wav_url field.");
 
       setGroupAudioCache((p) => ({ ...p, [groupKey]: url }));
-      setUiStatus(`Audio ready for ${announceLabel}.`);
-      await announce(`Audio ready for ${announceLabel}.`);
       return url;
     } finally {
       setLoadingGroupAudio((p) => ({ ...p, [groupKey]: false }));
@@ -369,7 +348,6 @@ export default function ResultScreen({ route, navigation }) {
       const rawBody = safeString(b.barText).trim();
 
       if (notesOnly) {
-        // Just "Bar 3: A, C sharp, D"
         const notes = extractNotesOnly(rawBody);
         return `Bar ${b.barNum}: ${notes || "(no notes)"}`;
       }
@@ -391,17 +369,11 @@ export default function ResultScreen({ route, navigation }) {
     return out;
   };
 
-  const toggleGroup = async (key, label) => {
+  const toggleGroup = (key) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      const willOpen = !next.has(key);
-      if (willOpen) next.add(key);
-      else next.delete(key);
-
-      // announce inside setState using computed value
-      setUiStatus(willOpen ? `Expanded ${label}.` : `Collapsed ${label}.`);
-      announce(willOpen ? `Expanded ${label}.` : `Collapsed ${label}.`);
-
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -409,10 +381,12 @@ export default function ResultScreen({ route, navigation }) {
   if (!doc) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title} accessibilityRole="header">
-          No result
-        </Text>
-        <Text style={styles.body}>No structured talking score document was returned.</Text>
+        <View accessible={true} accessibilityRole="header" accessibilityLabel="No result">
+          <Text style={styles.title} accessible={false} importantForAccessibility="no">No result</Text>
+        </View>
+        <View accessible={true} accessibilityLabel="No structured talking score document was returned.">
+          <Text style={styles.body} accessible={false} importantForAccessibility="no">No structured talking score document was returned.</Text>
+        </View>
       </View>
     );
   }
@@ -420,41 +394,50 @@ export default function ResultScreen({ route, navigation }) {
   return (
     <View style={styles.outer}>
       <View style={styles.header}>
-        <Text style={styles.title} accessibilityRole="header">
-          Talking Score
-        </Text>
+        <View accessible={true} accessibilityRole="header" accessibilityLabel="Talking Score">
+          <Text style={styles.title} accessible={false} importantForAccessibility="no">Talking Score</Text>
+        </View>
 
         <View style={styles.controls} accessibilityRole="toolbar">
           <Pressable
             style={[styles.btn, styles.btnSecondary]}
             onPress={() => navigation?.goBack?.()}
-            accessible={false}
             accessibilityRole="button"
             accessibilityLabel="Back to customisation"
             accessibilityHint="Returns to the previous screen."
             hitSlop={10}
           >
-            <Text style={styles.btnTextSecondary}>← Back</Text>
+            <Text
+              style={styles.btnTextSecondary}
+              accessible={false}
+              importantForAccessibility="no"
+            >
+              ← Back
+            </Text>
           </Pressable>
 
           <Pressable
             style={[styles.btn, styles.btnSecondary, !wholeAudioUrl ? styles.btnDisabled : null]}
-            onPress={() => playAudioUrl(wholeAudioUrl, "the full piece")}
-            accessible={false}
+            onPress={() => playAudioUrl(wholeAudioUrl)}
             accessibilityRole="button"
             accessibilityLabel="Play full piece"
             accessibilityHint={wholeAudioUrl ? "Plays the full score audio." : "Full audio is not available."}
-            accessibilityState={{ disabled: !wholeAudioUrl, busy: false }}
+            accessibilityState={{ disabled: !wholeAudioUrl }}
             disabled={!wholeAudioUrl}
             hitSlop={10}
           >
-            <Text style={styles.btnTextSecondary}>▶ Play full piece</Text>
+            <Text
+              style={styles.btnTextSecondary}
+              accessible={false}
+              importantForAccessibility="no"
+            >
+              ▶ Play full piece
+            </Text>
           </Pressable>
 
           <Pressable
             style={[styles.btn, styles.btnSecondary, !isPlayingAudio ? styles.btnDisabled : null]}
             onPress={stopAudio}
-            accessible={false}
             accessibilityRole="button"
             accessibilityLabel="Stop audio"
             accessibilityHint="Stops audio playback."
@@ -462,40 +445,60 @@ export default function ResultScreen({ route, navigation }) {
             disabled={!isPlayingAudio}
             hitSlop={10}
           >
-            <Text style={styles.btnTextSecondary}>⏹ Stop audio</Text>
+            <Text
+              style={styles.btnTextSecondary}
+              accessible={false}
+              importantForAccessibility="no"
+            >
+              ⏹ Stop audio
+            </Text>
           </Pressable>
         </View>
 
-        <Text style={styles.nowReading} accessibilityLiveRegion="polite">
+        <Text
+          style={styles.nowReading}
+          accessible={false}
+          importantForAccessibility="no"
+        >
           Group size: {barsPerGroup} · Instrument: {instrument}
           {useNato ? " · NATO on" : ""}
         </Text>
 
         {basicInfoLines?.length ? (
-          <View style={styles.metaBox} accessible={false} accessibilityLabel="Score information">
+          <View style={styles.metaBox} accessible={false}>
             {basicInfoLines.map((l, idx) => (
-              <Text key={String(idx)} style={styles.metaText}>
+              <Text
+                key={String(idx)}
+                style={styles.metaText}
+                accessible={false}
+                importantForAccessibility="no"
+              >
                 {l}
               </Text>
             ))}
             {!!generalSummary ? (
-              <Text style={[styles.metaText, { marginTop: 6 }]}>{generalSummary}</Text>
+              <Text
+                style={[styles.metaText, { marginTop: 6 }]}
+                accessible={false}
+                importantForAccessibility="no"
+              >
+                {generalSummary}
+              </Text>
             ) : null}
           </View>
         ) : null}
-
-        {/* Screen-reader-only status (helps Android announce changes) */}
-        <Text style={styles.srOnly} accessibilityLiveRegion="polite">
-          {uiStatus}
-        </Text>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.card} accessible={false}>
-          <Text style={styles.cardTitle} accessibilityRole="header">
+        <View
+          style={styles.card}
+          accessible={true}
+          accessibilityLabel="Bar groups. Tap a group to show text. Press Play to generate audio for that group."
+        >
+          <Text style={styles.cardTitle} accessible={false} importantForAccessibility="no">
             Bar groups
           </Text>
-          <Text style={styles.cardSubText}>
+          <Text style={styles.cardSubText} accessible={false} importantForAccessibility="no">
             Tap a group to show text. Press Play to generate audio for that group.
           </Text>
         </View>
@@ -520,39 +523,65 @@ export default function ResultScreen({ route, navigation }) {
             <View key={g.key} style={styles.groupCard} accessible={false}>
               <Pressable
                 style={styles.groupHeader}
-                onPress={() => toggleGroup(g.key, label)}
-                accessible={false}
+                onPress={() => toggleGroup(g.key)}
                 accessibilityRole="button"
-                accessibilityLabel={`${open ? "Collapse" : "Expand"} ${label}`}
-                accessibilityHint={open ? "Hides the text for this group." : "Shows the text for this group."}
+                accessibilityLabel={
+                  g.bars.length > 1
+                    ? `Bars ${g.startBarNum} to ${g.endBarNum}`
+                    : `Bar ${g.startBarNum}`
+                }
+                accessibilityHint={open ? "Double tap to collapse." : "Double tap to expand."}
                 accessibilityState={{ expanded: open }}
                 hitSlop={10}
               >
-                <Text style={styles.groupTitle}>
+                <Text
+                  style={styles.groupTitle}
+                  accessible={false}
+                  importantForAccessibility="no"
+                >
                   {g.bars.length > 1
                     ? `Bars ${g.startBarNum}–${g.endBarNum}`
                     : `Bar ${g.startBarNum}`}
                 </Text>
-                <Text style={styles.chev}>{open ? "▾" : "▸"}</Text>
+                <Text
+                  style={styles.chev}
+                  accessible={false}
+                  accessibilityElementsHidden={true}
+                  importantForAccessibility="no-hide-descendants"
+                >
+                  {open ? "▾" : "▸"}
+                </Text>
               </Pressable>
 
-              {sigLine ? <Text style={styles.groupSigText}>{sigLine}</Text> : null}
+              {sigLine ? (
+                <Text
+                  style={styles.groupSigText}
+                  accessible={false}
+                  importantForAccessibility="no"
+                >
+                  {sigLine}
+                </Text>
+              ) : null}
 
               <View style={styles.inlineButtons} accessible={false}>
                 <Pressable
                   style={styles.smallBtn}
                   onPress={() => {
-                    announce(`Reading ${label}.`);
                     speakText(combined, { language: "en-GB", rate: speechRate });
                   }}
-                  accessible={false}
                   accessibilityRole="button"
                   accessibilityLabel={`Read ${label}`}
-                  accessibilityHint="Reads the notes in this group using the screen reader voice."
+                  accessibilityHint="Reads the notes in this group using speech."
                   accessibilityState={{ disabled: false }}
                   hitSlop={10}
                 >
-                  <Text style={styles.smallBtnText}>Read</Text>
+                  <Text
+                    style={styles.smallBtnText}
+                    accessible={false}
+                    importantForAccessibility="no"
+                  >
+                    Read
+                  </Text>
                 </Pressable>
 
                 <Pressable
@@ -564,37 +593,61 @@ export default function ResultScreen({ route, navigation }) {
                         groupKey: g.key,
                         startBar: Number(g.startBarNum),
                         endBar: Number(g.endBarNum),
-                        announceLabel: label,
                       });
-                      await playAudioUrl(url, label);
+                      await playAudioUrl(url);
                     } catch (e) {
                       console.log("❌ GROUP AUDIO ERROR:", e?.message || e);
                       const msg = safeString(e?.message) || "Audio generation failed.";
-                      await announce(`Error generating audio for ${label}. ${msg}`);
-                      speakText(`Audio generation failed. ${msg}`, { language: "en-GB", rate: speechRate });
+                      speakText(`Audio generation failed. ${msg}`, {
+                        language: "en-GB",
+                        rate: speechRate,
+                      });
                     }
                   }}
-                  accessible={false}
                   accessibilityRole="button"
-                  accessibilityLabel={`Play ${label}`}
-                  accessibilityHint={isLoading ? "Generating audio, please wait." : "Generates and plays audio for this group."}
+                  accessibilityLabel={isLoading ? `Generating audio for ${label}` : `Play ${label}`}
+                  accessibilityHint={isLoading ? "Please wait." : "Generates and plays audio for this group."}
                   accessibilityState={{ disabled: isLoading, busy: isLoading }}
                   hitSlop={10}
                 >
                   {isLoading ? (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <ActivityIndicator accessibilityLabel="Generating audio" />
-                      <Text style={styles.smallBtnText}>Generating…</Text>
+                    <View
+                      style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                      accessible={false}
+                      importantForAccessibility="no-hide-descendants"
+                    >
+                      <ActivityIndicator />
+                      <Text
+                        style={styles.smallBtnText}
+                        accessible={false}
+                        importantForAccessibility="no"
+                      >
+                        Generating…
+                      </Text>
                     </View>
                   ) : (
-                    <Text style={styles.smallBtnText}>Play</Text>
+                    <Text
+                      style={styles.smallBtnText}
+                      accessible={false}
+                      importantForAccessibility="no"
+                    >
+                      Play
+                    </Text>
                   )}
                 </Pressable>
               </View>
 
               {open ? (
-                <View style={styles.groupBody} accessible={false} accessibilityLabel={`Text for ${label}`}>
-                  <Text style={styles.groupText}>{combined}</Text>
+                <View style={styles.groupBody} accessible={false}>
+                  <View accessible={true} accessibilityLabel={combined}>
+                    <Text
+                      style={styles.groupText}
+                      accessible={false}
+                      importantForAccessibility="no"
+                    >
+                      {combined}
+                    </Text>
+                  </View>
                 </View>
               ) : null}
             </View>
@@ -647,7 +700,4 @@ const styles = StyleSheet.create({
 
   container: { flex: 1, justifyContent: "center", alignItems: "center", padding: 20 },
   body: { fontSize: 16, color: "#111827" },
-
-  // visually hidden but readable by SR
-  srOnly: { position: "absolute", left: -10000, top: 0, height: 1, width: 1, opacity: 0 },
 });

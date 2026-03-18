@@ -137,13 +137,11 @@ export default function ProcessingScreen({ route, navigation }) {
 
       {/* Live region: reads status updates. On iOS, "polite" isn't used the same way,
           but Text + announceForAccessibility covers it. */}
-      <Text
-        style={styles.text}
-        accessibilityLiveRegion="polite"
-        accessibilityRole="text"
-      >
-        {status}
-      </Text>
+      <View accessible={true} accessibilityLiveRegion="polite" accessibilityLabel={status}>
+        <Text style={styles.text} accessible={false}>
+          {status}
+        </Text>
+      </View>
 
       {file?.uri ? (
         <Text style={styles.small} accessibilityLabel="File selected for upload">
